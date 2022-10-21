@@ -24,7 +24,11 @@ func NewCipher(salt string) Encryptor {
 }
 
 func (e *encryptor) EncryptBytes(input []byte, password string) ([]byte, error) {
-	bit16Salt := md5.Sum(e.salt) //nolint:gosec
+	bit16Salt := [16]byte{}
+	for i := 0; i < 15; i++ {
+		bit16Salt = md5.Sum(e.salt)
+		bit16Salt = md5.Sum(bit16Salt[:])
+	}
 	passwordBytes := sha256.Sum256([]byte(password))
 	block, err := aes.NewCipher(passwordBytes[:])
 	if err != nil {
@@ -37,7 +41,11 @@ func (e *encryptor) EncryptBytes(input []byte, password string) ([]byte, error) 
 }
 
 func (e *encryptor) DecryptBytes(input []byte, password string) ([]byte, error) {
-	bit16Salt := md5.Sum(e.salt) //nolint:gosec
+	bit16Salt := [16]byte{}
+	for i := 0; i < 15; i++ {
+		bit16Salt = md5.Sum(e.salt)
+		bit16Salt = md5.Sum(bit16Salt[:])
+	}
 	passwordBytes := sha256.Sum256([]byte(password))
 	block, err := aes.NewCipher(passwordBytes[:])
 	if err != nil {
