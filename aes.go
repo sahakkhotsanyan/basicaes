@@ -16,17 +16,18 @@ type Encryptor interface {
 }
 
 type encryptor struct {
-	salt []byte
+	salt   []byte
+	rounds int
 }
 
-func NewCipher(salt string) Encryptor {
-	return &encryptor{salt: []byte(salt)}
+func NewCipher(salt string, rounds int) Encryptor {
+	return &encryptor{salt: []byte(salt), rounds: rounds}
 }
 
 func (e *encryptor) EncryptBytes(input []byte, password string) ([]byte, error) {
 	bit16Salt := [16]byte{}
-	for i := 0; i < 15; i++ {
-		bit16Salt = md5.Sum(e.salt)
+	bit16Salt = md5.Sum(e.salt)
+	for i := 0; i < e.rounds; i++ {
 		bit16Salt = md5.Sum(bit16Salt[:])
 	}
 	passwordBytes := sha256.Sum256([]byte(password))
@@ -34,16 +35,21 @@ func (e *encryptor) EncryptBytes(input []byte, password string) ([]byte, error) 
 	if err != nil {
 		return nil, err
 	}
-	cfb := cipher.NewCFBEncrypter(block, bit16Salt[:])
-	cipherText := make([]byte, len(input))
-	cfb.XORKeyStream(cipherText, input)
+
+	cipherText := input
+	for i := 0; i < e.rounds; i++ {
+		cfb := cipher.NewCFBEncrypter(block, bit16Salt[:])
+		tempCipherText := make([]byte, len(cipherText))
+		cfb.XORKeyStream(tempCipherText, cipherText)
+		cipherText = tempCipherText
+	}
 	return cipherText, nil
 }
 
 func (e *encryptor) DecryptBytes(input []byte, password string) ([]byte, error) {
 	bit16Salt := [16]byte{}
-	for i := 0; i < 15; i++ {
-		bit16Salt = md5.Sum(e.salt)
+	bit16Salt = md5.Sum(e.salt)
+	for i := 0; i < e.rounds; i++ {
 		bit16Salt = md5.Sum(bit16Salt[:])
 	}
 	passwordBytes := sha256.Sum256([]byte(password))
@@ -51,37 +57,58 @@ func (e *encryptor) DecryptBytes(input []byte, password string) ([]byte, error) 
 	if err != nil {
 		return nil, err
 	}
-	cfb := cipher.NewCFBDecrypter(block, bit16Salt[:])
-	plainText := make([]byte, len(input))
-	cfb.XORKeyStream(plainText, input)
+
+	plainText := input
+	for i := 0; i < e.rounds; i++ {
+		cfb := cipher.NewCFBDecrypter(block, bit16Salt[:])
+		tempPlainText := make([]byte, len(plainText))
+		cfb.XORKeyStream(tempPlainText, plainText)
+		plainText = tempPlainText
+	}
 	return plainText, nil
 }
 
 func (e *encryptor) Encrypt(text, password string) (string, error) {
 	bit16Salt := md5.Sum(e.salt) //nolint:gosec
+	for i := 0; i < e.rounds; i++ {
+		bit16Salt = md5.Sum(bit16Salt[:])
+	}
 	passwordBytes := sha256.Sum256([]byte(password))
 	block, err := aes.NewCipher(passwordBytes[:])
 	if err != nil {
 		return "", err
 	}
+
 	plainText := []byte(text)
-	cfb := cipher.NewCFBEncrypter(block, bit16Salt[:])
-	cipherText := make([]byte, len(plainText))
-	cfb.XORKeyStream(cipherText, plainText)
+	cipherText := plainText
+	for i := 0; i < e.rounds; i++ {
+		cfb := cipher.NewCFBEncrypter(block, bit16Salt[:])
+		tempCipherText := make([]byte, len(cipherText))
+		cfb.XORKeyStream(tempCipherText, cipherText)
+		cipherText = tempCipherText
+	}
 	return encode(cipherText), nil
 }
 
 func (e *encryptor) Decrypt(text, password string) (string, error) {
 	bit16Salt := md5.Sum(e.salt) //nolint:gosec
+	for i := 0; i < e.rounds; i++ {
+		bit16Salt = md5.Sum(bit16Salt[:])
+	}
 	passwordBytes := sha256.Sum256([]byte(password))
 	block, err := aes.NewCipher(passwordBytes[:])
 	if err != nil {
 		return "", err
 	}
+
 	cipherText := decode(text)
-	cfb := cipher.NewCFBDecrypter(block, bit16Salt[:])
-	plainText := make([]byte, len(cipherText))
-	cfb.XORKeyStream(plainText, cipherText)
+	plainText := cipherText
+	for i := 0; i < e.rounds; i++ {
+		cfb := cipher.NewCFBDecrypter(block, bit16Salt[:])
+		tempPlainText := make([]byte, len(plainText))
+		cfb.XORKeyStream(tempPlainText, plainText)
+		plainText = tempPlainText
+	}
 	return string(plainText), nil
 }
 
